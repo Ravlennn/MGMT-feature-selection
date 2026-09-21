@@ -1,19 +1,20 @@
-@"
 .venv/
 __pycache__/
 *.py[cod]
 .pytest_cache/
 .idea/
 .vscode/
+*.egg-info/
 
+# Raw/processed datasets are kept locally and are not committed.
 data/raw/*
 data/processed/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 
-results/*
-!results/.gitkeep
+# Generated experiment outputs are reproducible and not committed by default.
+results/upenn/*
+!results/upenn/.gitkeep
 
 *.log
 .DS_Store
-"@ | Set-Content .gitignore

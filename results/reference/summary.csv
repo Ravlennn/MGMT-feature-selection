@@ -1,0 +1,4 @@
+method,input_features,stage1_features,selected_features,internal_score,note
+le_fscore,704,704,9,,Le top-9 F-score reproduction; exact published top-9 match
+do_xgb_ga,704,38,21,0.9254545454545454,XGBoost gain > 0 followed by GA-RF
+calabrese_mi_rfe,704,704,32,,Calabrese-inspired method sanity check on shared TCGA table; original UCSF cohort not bundled

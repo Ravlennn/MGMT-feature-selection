@@ -1,0 +1,4 @@
+method_a,method_b,intersection,union,jaccard
+le_fscore,do_xgb_ga,3,27,0.1111111111111111
+le_fscore,calabrese_mi_rfe,9,32,0.28125
+do_xgb_ga,calabrese_mi_rfe,6,47,0.1276595744680851

@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mgmt-radiomics-feature-selection"
+version = "0.2.0"
+description = "Reproduction and comparison of radiomics feature-selection approaches for MGMT promoter methylation."
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.0",
+    "scikit-learn>=1.4",
+    "xgboost>=2.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

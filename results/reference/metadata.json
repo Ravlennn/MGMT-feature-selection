@@ -1,0 +1,12 @@
+{
+  "patients": 53,
+  "raw_features": 724,
+  "dropped_nan_features": 20,
+  "clean_features": 704,
+  "stored_validated_result": true,
+  "le_top9_exact_match": true,
+  "do_xgb_candidates": 38,
+  "do_ga_selected_features": 21,
+  "do_ga_internal_cv_accuracy": 0.9254545454545454,
+  "calabrese_selected_features": 32
+}
