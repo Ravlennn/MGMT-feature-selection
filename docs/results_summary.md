@@ -1,37 +1,35 @@
-# MGMT radiomics feature-selection — generated results summary
+# MGMT radiomics feature-selection — сводка результатов
 
-## Study goal
+## Цель исследования
 
-Compare three article-derived radiomics feature-processing approaches: Le F-score, Do XGBoost→GA-RF, and Calabrese-inspired MI→RF-RFE. Methods are first checked on the small reference table and then applied to one common UPenn-GBM structural-radiomics dataset.
+Сравнить три подхода к обработке и отбору радиомических признаков, взятых из статей: F-score по Le, XGBoost→GA-RF по Do и Calabrese-inspired MI→RF-RFE. Сначала методы проверяются на небольшой reference-таблице, после чего применяются к одному общему набору structural radiomics UPenn-GBM.
 
-## Reference-data results
+## Результаты на reference dataset
 
-| method           | input_features | stage1_features | selected_features | internal_score     | note                                                                                          |
-| ---------------- | -------------- | --------------- | ----------------- | ------------------ | --------------------------------------------------------------------------------------------- |
-| le_fscore        | 704            | 704             | 9                 | nan                | Le top-9 F-score reproduction; exact published top-9 match                                    |
-| do_xgb_ga        | 704            | 38              | 21                | 0.9254545454545454 | XGBoost gain > 0 followed by GA-RF                                                            |
-| calabrese_mi_rfe | 704            | 704             | 32                | nan                | Calabrese-inspired method sanity check on shared TCGA table; original UCSF cohort not bundled |
+| method           | input_features | stage1_features | selected_features | note                                                                                          |
+| ---------------- | -------------- | --------------- | ----------------- | --------------------------------------------------------------------------------------------- |
+| le_fscore        | 704            | 704             | 9                 | Воспроизведение Le top-9 по F-score; опубликованный top-9 совпал точно                        |
+| do_xgb_ga        | 704            | 38              | 21                | XGBoost gain > 0, после чего GA-RF                                                            |
+| calabrese_mi_rfe | 704            | 704             | 32                | Проверка логики метода Calabrese на общей TCGA-таблице; оригинальный UCSF cohort не включён   |
 
-**Interpretation note.** Le and Do are reproduced/checked on the shared 53-patient TCGA table. The Calabrese pipeline is a method sanity check on that table because the original UCSF feature matrix is not bundled here.
 
 ## UPenn dataset
 
-- Patients: 256
+- Пациентов: 256
 - Methylated: 108
 - Unmethylated: 148
-- Clean radiomics features: 1480
+- Очищенных radiomics-признаков: 1480
 
-## UPenn feature-selection results
+## Результаты feature selection на UPenn
 
-| method           | input_features | stage1_features | selected_features | internal_score     |
-| ---------------- | -------------- | --------------- | ----------------- | ------------------ |
-| le_fscore        | 1480           | 1480            | 9                 | nan                |
-| do_xgb_ga        | 1480           | 285             | 136               | 0.6290346907993967 |
-| calabrese_mi_rfe | 1480           | 1024            | 32                | nan                |
+| method           | input_features | stage1_features | selected_features |
+| ---------------- | -------------- | --------------- | ----------------- |
+| le_fscore        | 1480           | 1480            | 9                 |
+| do_xgb_ga        | 1480           | 285             | 136               |
+| calabrese_mi_rfe | 1480           | 1024            | 32                |
 
-The Do `internal_score` is the GA Random-Forest cross-validation fitness used by the selector; it is not an external generalization metric.
 
-## Pairwise overlap on UPenn
+## Попарное пересечение выбранных признаков на UPenn
 
 | method_a  | method_b         | intersection | union | jaccard            |
 | --------- | ---------------- | ------------ | ----- | ------------------ |
@@ -39,9 +37,9 @@ The Do `internal_score` is the GA Random-Forest cross-validation fitness used by
 | le_fscore | calabrese_mi_rfe | 4            | 37    | 0.1081081081081081 |
 | do_xgb_ga | calabrese_mi_rfe | 12           | 156   | 0.0769230769230769 |
 
-## Selected-feature composition on UPenn
+## Состав выбранных признаков на UPenn
 
-### Family
+### Семейства признаков
 
 | method           | dimension | value       | count | fraction           |
 | ---------------- | --------- | ----------- | ----- | ------------------ |
@@ -63,7 +61,7 @@ The Do `internal_score` is the GA Random-Forest cross-validation fitness used by
 | calabrese_mi_rfe | family    | GLCM        | 1     | 0.03125            |
 | calabrese_mi_rfe | family    | GLRLM       | 1     | 0.03125            |
 
-### Modality
+### MRI-модальности
 
 | method           | dimension | value        | count | fraction           |
 | ---------------- | --------- | ------------ | ----- | ------------------ |
@@ -82,7 +80,7 @@ The Do `internal_score` is the GA Random-Forest cross-validation fitness used by
 | calabrese_mi_rfe | modality  | SHAPE_SHARED | 4     | 0.125              |
 | calabrese_mi_rfe | modality  | FLAIR        | 2     | 0.0625             |
 
-### Region
+### Области опухоли
 
 | method           | dimension | value | count | fraction           |
 | ---------------- | --------- | ----- | ----- | ------------------ |
@@ -96,10 +94,4 @@ The Do `internal_score` is the GA Random-Forest cross-validation fitness used by
 | calabrese_mi_rfe | region    | NC    | 11    | 0.34375            |
 | calabrese_mi_rfe | region    | ED    | 9     | 0.28125            |
 
-## What to discuss in the report
 
-1. How aggressively each method reduces the feature space.
-2. Which feature families, MRI modalities and tumor regions dominate each selected subset.
-3. How much the three methods overlap on the same UPenn cohort.
-4. Differences between the small reference dataset and the larger UPenn dataset.
-5. Method limitations: small original cohorts, stochastic GA behavior, and the fact that feature selection here is the primary object of study rather than a fully validated clinical classifier.

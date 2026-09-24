@@ -1,34 +1,36 @@
 # MGMT Radiomics Feature Selection
 
-A compact project for reproducing and comparing three radiomics feature-processing approaches for MGMT promoter methylation:
+Cравнение трёх подходов к отбору радиомических признаков для анализа статуса метилирования промотора **MGMT**:
 
-- **Le et al.** — F-score ranking.
-- **Do et al.** — XGBoost gain → Genetic Algorithm with Random-Forest fitness.
+- **Le et al.** — ранжирование по F-score.
+- **Do et al.** — XGBoost gain → Genetic Algorithm с Random Forest в качестве fitness-функции.
 - **Calabrese-inspired** — Mutual Information → Random-Forest RFE.
 
-The project follows one simple flow:
+Нынешняя цель — **сравнение подходов к feature selection**.
+
+## Общая схема проекта
 
 ```text
-reference/original data
+reference / авторские данные
         ↓
-3 feature-selection methods
+проверка 3 методов feature selection
         ↓
-method sanity check / reproduction
+сравнение с результатами статей
 
-official UPenn-GBM structural radiomics
+открытые данные UPenn-GBM radiomics
         ↓
-common cleaning
+общий preprocessing
         ↓
-3 feature-selection methods
+3 метода feature selection
         ↓
-feature-set comparison
+сравнение выбранных наборов признаков
         ↓
-report-ready tables + markdown summary
+дополнительная оценка через Logistic Regression
+        ↓
+таблицы и материалы для отчёта
 ```
 
-The main goal is **comparison of feature-processing approaches**, not construction of an optimized MGMT classifier.
-
-## Repository structure
+## Структура репозитория
 
 ```text
 MGMT-feature-selection/
@@ -53,20 +55,20 @@ MGMT-feature-selection/
 │   ├── build_upenn.py
 │   ├── run_reference.py
 │   ├── run_upenn.py
+│   ├── evaluate_upenn_selected.py
 │   ├── build_report.py
 │   └── run_all.py
 ├── results/
 │   ├── reference/
 │   └── upenn/
 └── docs/
-    └── PROJECT_SCOPE.md
+    ├── SOURCES.md
+    └── results_summary.md
 ```
 
-Everything that was only useful while exploring the data (`audit_*`, nested CV, outer-fold generation, temporary benchmark scripts, `__pycache__`, `egg-info`, etc.) has been removed.
+## Установка
 
-## Setup
-
-From the repository root:
+Из корня репозитория:
 
 ```powershell
 python -m venv .venv
@@ -75,102 +77,403 @@ python -m pip install --upgrade pip
 pip install -e .
 ```
 
-Python 3.11+ is supported.
+Поддерживается Python 3.11+.
 
-## Fastest path to the final report
+Основные зависимости:
 
-Validated reference results are already included in `results/reference/`, so under a tight deadline you only need:
+- NumPy
+- pandas
+- scikit-learn
+- XGBoost
 
-```powershell
-python scripts/run_all.py --skip-reference
+---
+
+# Данные
+
+## Reference dataset
+
+Для проверки реализации методов используется датасет:
+
+```text
+data/raw/do_2022/Training dataset.csv
 ```
 
-This command will:
+В ней:
 
-1. rebuild `data/processed/upenn/upenn_clean.csv` from the official raw UPenn files;
-2. run Le, Do and Calabrese-inspired feature selection on the same UPenn dataset;
-3. compare the selected feature sets;
-4. generate `docs/results_summary.md` with report-ready tables.
+- 53 пациента;
+- 724 исходных radiomics-признака;
+- 27 Unmethylated;
+- 26 Methylated.
 
-The Do GA-RF and Calabrese RF-RFE stages are the expensive parts.
+На этапе preprocessing удаляются все признаки, содержащие хотя бы один `NaN`:
 
-## Full reproduction from scratch
-
-To rerun both the reference stage and UPenn stage:
-
-```powershell
-python scripts/run_all.py
+```text
+724 исходных признака
+→ удалить 20 признаков с пропусками
+→ 704 признака
 ```
 
-For a quick smoke check of the code with reduced GA/RF-RFE settings:
+После этого один и тот же датасет из 704 признаков передаётся всем трём методам.
 
-```powershell
-python scripts/run_all.py --quick
+## UPenn-GBM
+
+Для основного сравнения используется официальный датасет UPenn-GBM.
+
+Подробный preprocessing вынесен в отдельный файл:
+
+```text
+README_UPENN_PREPROCESSING.md
 ```
 
-Do **not** use `--quick` results in the final report.
+Кратко итоговая последовательность выглядит так:
 
-## Individual pipelines
+```text
+671 пациент в clinical table
+        ↓
+оставляем только известный MGMT
+        ↓
+291 пациент
+        ↓
+inner join 12 structural radiomics blocks
+        ↓
+256 пациентов
+        ↓
+1728 radiomics-признаков
+        ↓
+- 84 константных
+- 164 точных дубликата
++ median imputation 4 пропущенных значений
+        ↓
+1480 clean radiomics-признаков
+```
 
-Build the canonical UPenn dataset:
+Финальная выборка:
+
+```text
+256 пациентов
+148 Unmethylated
+108 Methylated
+1480 radiomics-признаков
+```
+
+Результат сохраняется в:
+
+```text
+data/processed/upenn/upenn_clean.csv
+```
+
+---
+
+# Почему используются только structural MRI
+
+Основной эксперимент использует только структурные MRI radiomics:
+
+```text
+FLAIR × ED / ET / NC
+T1GD  × ED / ET / NC
+T1    × ED / ET / NC
+T2    × ED / ET / NC
+```
+
+Всего:
+
+```text
+4 modalities × 3 tumor regions = 12 radiomics blocks
+```
+
+---
+
+# Построение UPenn dataset
+
+Запуск:
 
 ```powershell
 python scripts/build_upenn.py
 ```
 
-Expected result:
+Ожидаемый результат:
 
 ```text
-291 clinical cases with known MGMT
-→ 256 cases with all 12 structural radiomics blocks
+671 clinical patients
+→ 291 с известным MGMT
+→ 256 с полным набором 12 structural radiomics blocks
+
 1728 raw structural features
-→ remove 84 constants
-→ remove 164 exact duplicates
-→ median-impute 4 residual values
+→ удалить 84 constants
+→ удалить 164 exact duplicates
+→ median-impute 4 residual missing values
 = 1480 clean radiomics features
 ```
 
-Rerun the reference-data experiments:
+Создаются:
+
+```text
+data/processed/upenn/upenn_clean.csv
+data/processed/upenn/summary.json
+```
+
+---
+
+# Метод 1: Le et al. — F-score
+
+Для каждого признака независимо рассчитывается F-score:
+
+```text
+различие средних между Methylated и Unmethylated
+------------------------------------------------
+       внутригрупповой разброс признака
+```
+
+Чем сильнее различаются две группы и чем меньше разброс внутри групп, тем выше F-score.
+
+После расчёта все признаки сортируются по убыванию F-score и выбирается фиксированный top-9:
+
+```text
+reference:
+704 → 9
+
+UPenn:
+1480 → 9
+```
+
+На reference dataset опубликованный top-9 Le et al. был воспроизведён точно.
+
+---
+
+# Метод 2: Do et al. — XGBoost gain → GA-RF
+
+Метод состоит из двух этапов.
+
+## Этап 1. XGBoost
+
+XGBoost обучается на всех признаках, после чего рассчитывается `gain importance`.
+
+Оставляются признаки:
+
+```text
+gain > 0
+```
+
+Результаты:
+
+```text
+reference:
+704 → 38 XGBoost candidates
+
+UPenn:
+1480 → 285 XGBoost candidates
+```
+
+## Этап 2. Genetic Algorithm + Random Forest
+
+Каждая возможная комбинация признаков кодируется бинарной хромосомой:
+
+```text
+1 0 1 1 0 ...
+```
+
+где:
+
+- `1` — признак используется;
+- `0` — признак исключён.
+
+Fitness каждой хромосомы — средняя `accuracy` Random Forest в stratified 5-fold cross-validation.
+
+GA использует:
+
+- selection;
+- crossover;
+- mutation;
+- elitism.
+
+При одинаковой accuracy предпочтение отдаётся более компактному набору признаков.
+
+Результаты:
+
+```text
+reference:
+38 → 21
+internal RF CV accuracy ≈ 0.9255
+
+UPenn:
+285 → 136
+internal RF CV accuracy ≈ 0.6290
+```
+
+`internal_score` является fitness-функцией GA, а не независимой внешней оценкой качества модели.
+
+---
+
+# Метод 3: Calabrese-inspired — Mutual Information → RF-RFE
+
+## Этап 1. Mutual Information
+
+Для каждого признака рассчитывается Mutual Information с MGMT target.
+
+Затем выбираются максимум 1024 лучших признака.
+
+Поэтому:
+
+```text
+reference:
+704 → 704
+```
+
+На reference признаков меньше 1024, поэтому MI только ранжирует их.
+
+На UPenn:
+
+```text
+1480 → 1024
+```
+
+## Этап 2. Random Forest RFE
+
+Далее выполняется Recursive Feature Elimination:
+
+```text
+обучить Random Forest
+→ определить менее важные признаки
+→ удалить 16 признаков
+→ повторить
+```
+
+Процедура выполняется в 5 folds.
+
+Для каждого признака вычисляется средний RFE-rank между folds, после чего выбираются 32 лучших признака.
+
+Итог:
+
+```text
+reference:
+704 → 704 → 32
+
+UPenn:
+1480 → 1024 → 32
+```
+
+Для Calabrese это method sanity check / адаптация метода, поскольку оригинальная UCSF feature matrix в проекте отсутствует.
+
+---
+
+# Быстрый путь к основным результатам
+
+Валидированные reference-результаты уже сохранены в `results/reference/`.
+
+Поэтому можно запустить:
+
+```powershell
+python scripts/run_all.py --skip-reference
+```
+
+Команда:
+
+1. заново создаст `upenn_clean.csv`;
+2. применит Le, Do и Calabrese-inspired к UPenn;
+3. сравнит выбранные признаки;
+4. создаст `docs/results_summary.md`.
+
+Do GA-RF и Calabrese RF-RFE являются наиболее вычислительно тяжёлыми этапами.
+
+---
+
+# Полное воспроизведение с нуля
+
+Чтобы заново запустить reference и UPenn:
+
+```powershell
+python scripts/run_all.py
+```
+
+Для быстрого smoke-test:
+
+```powershell
+python scripts/run_all.py --quick
+```
+
+`--quick` использует уменьшенные GA/RF-RFE параметры только для проверки работоспособности кода.
+
+**Результаты `--quick` нельзя использовать как финальные результаты эксперимента.**
+
+---
+
+# Запуск отдельных этапов
+
+Построить UPenn dataset:
+
+```powershell
+python scripts/build_upenn.py
+```
+
+Перезапустить reference experiments:
 
 ```powershell
 python scripts/run_reference.py
 ```
 
-Apply all three approaches to UPenn:
+Запустить все три метода на UPenn:
 
 ```powershell
 python scripts/run_upenn.py
 ```
 
-Generate report-ready summary:
+Собрать Markdown-сводку результатов:
 
 ```powershell
 python scripts/build_report.py
 ```
 
-## Outputs used in the report
+Отдельно сравнить выбранные UPenn feature subsets через единый downstream-классификатор:
 
-### Reference
-
-`results/reference/summary.csv` contains the compact reference comparison.
-
-Current validated reference result:
-
-```text
-Le:          704 → 9
-Do:          704 → 38 XGB candidates → 21 GA features
-Calabrese:   704 → 32
+```powershell
+python scripts/evaluate_upenn_selected.py
 ```
 
-The Do GA internal 5-fold RF accuracy is approximately `0.9255` in the stored validated run.
+---
 
-For Le, the published top-9 ordering was reproduced exactly on the 53-patient table.
+# Reference results
 
-The Calabrese pipeline is a **method sanity check on the shared TCGA table**, not a reproduction of the original UCSF cohort because that original feature matrix is not included here.
+Текущие валидированные результаты:
 
-### UPenn
+```text
+Le:
+704 → 9
 
-After `run_upenn.py`:
+Do:
+704 → 38 XGB candidates → 21 GA features
+
+Calabrese:
+704 → 704 → 32
+```
+
+Для Do:
+
+```text
+GA internal 5-fold RF accuracy ≈ 0.9255
+```
+
+Для Le опубликованный top-9 был воспроизведён точно.
+
+Calabrese pipeline на reference dataset является проверкой логики метода, а не точным воспроизведением оригинального UCSF cohort.
+
+---
+
+# UPenn feature-selection results
+
+После полного запуска:
+
+```text
+Le:
+1480 → 9
+
+Do:
+1480 → 285 → 136
+
+Calabrese:
+1480 → 1024 → 32
+```
+
+Результаты сохраняются в:
 
 ```text
 results/upenn/
@@ -182,32 +485,43 @@ results/upenn/
     ├── pairwise_overlap.csv
     ├── feature_membership.csv
     ├── common_all_methods.csv
-    └── feature_composition.csv
+    ├── feature_composition.csv
+    └── predictive_comparison.csv
 ```
 
-`feature_composition.csv` automatically summarizes selected features by:
+`feature_composition.csv` позволяет сравнивать выбранные признаки по:
 
-- feature family (`GLCM`, `GLRLM`, `GLSZM`, histogram, intensity, morphology, ...);
-- MRI modality (`FLAIR`, `T1`, `T1GD`, `T2`);
-- tumor region (`ED`, `ET`, `NC`).
+- семейству признака: `GLCM`, `GLRLM`, `GLSZM`, Histogram, Intensity, Morphologic и т. д.;
+- MRI modality: `FLAIR`, `T1`, `T1GD`, `T2`;
+- tumor region: `ED`, `ET`, `NC`.
 
-Morphologic/volumetric features are marked as `SHAPE_SHARED`, because the same segmentation geometry is shared across structural MRI modalities and exact duplicate copies are removed during preprocessing.
+Morphologic/volumetric признаки помечаются как `SHAPE_SHARED`, поскольку они определяются геометрией сегментации, а точные дубликаты между modalities удаляются во время preprocessing.
 
-## UPenn data choice
+---
 
-The main experiment uses only structural MRI radiomics:
+# Дополнительное сравнение по ROC-AUC
+
+После feature selection выбранные наборы признаков можно сравнить на одном и том же downstream-классификаторе:
 
 ```text
-FLAIR × ED/ET/NC
-T1GD  × ED/ET/NC
-T1    × ED/ET/NC
-T2    × ED/ET/NC
+StandardScaler
+→ Logistic Regression
+→ stratified 5-fold CV
 ```
 
-DTI and DSC blocks are intentionally excluded from the main pipeline because they substantially reduce the number of patients with complete data and make the comparison less aligned with the structural MRI approaches used in the reviewed papers.
+Запуск:
 
-## About the Kaggle nested-CV run
+```powershell
+python scripts/evaluate_upenn_selected.py
+```
 
-The long nested-CV Do experiment started during development can finish if desired, but it is **supplementary**. It is not required by the original follow-up and is not part of the core cleaned pipeline. If its results are useful, cite them separately as an additional validation experiment rather than mixing them with the main feature-selection comparison.
+Текущий результат:
 
-See `docs/PROJECT_SCOPE.md` whenever the project scope starts drifting again.
+| Метод | Признаков | ROC-AUC | Balanced accuracy | Accuracy |
+|---|---:|---:|---:|---:|
+| XGBoost + GA-RF | 136 | 0.6062 | 0.5651 | 0.5781 |
+| F-score | 9 | 0.5968 | 0.5513 | 0.5781 |
+| MI + RF-RFE | 32 | 0.5835 | 0.5639 | 0.5898 |
+
+Важно: feature selection выполнялся до этой downstream CV на полном UPenn dataset, поэтому ROC-AUC используется как **внутренняя сравнительная метрика выбранных feature subsets**, а не как независимая внешняя оценка generalization.
+
