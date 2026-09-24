@@ -356,6 +356,261 @@ UPenn:
 
 ---
 
+
+# Как используется cross-validation
+
+
+## 1. F-score
+
+F-score **не использует cross-validation**.
+
+---
+
+## 2. XGBoost → Genetic Algorithm + Random Forest
+
+На первом этапе XGBoost обучается на текущем датасете и оставляет признаки с:
+
+```text
+gain > 0
+```
+
+Cross-validation появляется внутри Genetic Algorithm.
+
+Каждая хромосома GA задаёт отдельный subset признаков:
+
+```text
+1 0 1 1 0 ...
+```
+
+Для оценки этой хромосомы используется:
+
+```python
+StratifiedKFold(
+    n_splits=5,
+    shuffle=True,
+    random_state=42,
+)
+```
+
+`Stratified` означает, что в каждом fold стараются сохранить примерно то же соотношение `Methylated / Unmethylated`, что и во всём датасете.
+
+Для каждого из 5 folds:
+
+```text
+4 folds → обучение Random Forest
+1 fold  → validation
+
+повторить 5 раз
+```
+
+Random Forest содержит:
+
+```text
+100 деревьев
+```
+
+На каждом fold считается `accuracy`, после чего берётся среднее:
+
+```text
+accuracy_1
+accuracy_2
+accuracy_3
+accuracy_4
+accuracy_5
+     ↓
+mean accuracy
+     ↓
+fitness хромосомы
+```
+
+Именно это значение GA использует, чтобы решить, какая комбинация признаков лучше.
+
+Поэтому значения:
+
+```text
+reference: ≈ 0.9255
+UPenn:     ≈ 0.6290
+```
+
+— это **internal 5-fold CV fitness Genetic Algorithm**, а не независимая test accuracy.
+
+На UPenn при 256 пациентах в каждом таком разбиении получается примерно:
+
+```text
+204–205 пациентов → train
+51–52 пациента    → validation
+```
+
+На reference dataset из 53 пациентов:
+
+```text
+примерно 42–43 → train
+примерно 10–11 → validation
+```
+
+---
+
+## 3. Mutual Information → RF-RFE
+
+В методе Calabrese-inspired cross-validation используется по-другому.
+
+Сначала Mutual Information рассчитывается на текущем датасете и формирует набор кандидатов:
+
+```text
+reference:
+704 → 704
+
+UPenn:
+1480 → 1024
+```
+
+После этого создаётся:
+
+```python
+StratifiedKFold(
+    n_splits=5,
+    shuffle=True,
+    random_state=42,
+)
+```
+
+Для каждого fold RF-RFE обучается **только на train-части**:
+
+```text
+fold 1 train → RF-RFE ranking 1
+fold 2 train → RF-RFE ranking 2
+fold 3 train → RF-RFE ranking 3
+fold 4 train → RF-RFE ranking 4
+fold 5 train → RF-RFE ranking 5
+```
+
+Внутри RFE используется Random Forest:
+
+```text
+1000 деревьев
+```
+
+На каждой итерации удаляется:
+
+```text
+16 признаков
+```
+
+пока не останется 32 признака.
+
+
+После пяти запусков для каждого признака вычисляется:
+
+```text
+average_rank = средний RFE-rank по 5 folds
+rank_std     = разброс rank между folds
+```
+
+И затем признаки сортируются по `average_rank`. Если средний rank совпадает, дополнительным критерием служит `mi_rank`.
+
+Итог:
+
+```text
+5 RFE rankings
+      ↓
+average rank
+      ↓
+final ranking
+      ↓
+top-32
+```
+
+---
+
+## 4. Дополнительная оценка selected features по ROC-AUC
+
+После того как каждый метод уже выбрал свой набор признаков, выполняется отдельное сравнение:
+
+```text
+F-score subset        → 9 признаков
+XGBoost + GA-RF       → 136 признаков
+MI + RF-RFE           → 32 признака
+```
+
+Для всех трёх используется **одинаковый downstream pipeline**:
+
+```text
+StandardScaler
+→ Logistic Regression
+→ Stratified 5-fold cross-validation
+```
+
+Разбиение:
+
+```python
+StratifiedKFold(
+    n_splits=5,
+    shuffle=True,
+    random_state=42,
+)
+```
+
+`StandardScaler` и `LogisticRegression` находятся внутри одного `Pipeline`, поэтому на каждом fold scaler обучается только на train-части и затем применяется к validation-части.
+
+Через:
+
+```python
+cross_val_predict(
+    ...,
+    method="predict_proba",
+)
+```
+
+каждый пациент получает out-of-fold вероятность от модели, которая не использовала этого пациента при обучении.
+
+После объединения predictions со всех пяти folds считаются:
+
+```text
+ROC-AUC
+Balanced Accuracy
+Accuracy
+```
+
+Текущие результаты:
+
+| Метод | Признаков | ROC-AUC | Balanced accuracy | Accuracy |
+|---|---:|---:|---:|---:|
+| XGBoost + GA-RF | 136 | 0.6062 | 0.5651 | 0.5781 |
+| F-score | 9 | 0.5968 | 0.5513 | 0.5781 |
+| MI + RF-RFE | 32 | 0.5835 | 0.5639 | 0.5898 |
+
+### Ограничение этой оценки
+
+Feature selection выполняется **до** данной downstream cross-validation на полном UPenn dataset.
+
+То есть схема сейчас:
+
+```text
+полный UPenn
+     ↓
+feature selection
+     ↓
+готовый subset
+     ↓
+5-fold CV Logistic Regression
+```
+
+а не строгая nested схема:
+
+```text
+outer train
+     ↓
+feature selection только внутри train
+     ↓
+model
+     ↓
+outer validation
+```
+
+Поэтому ROC-AUC в проекте используется как **внутренняя сравнительная метрика готовых feature subsets**, а не как независимая оценка generalization или внешняя clinical validation.
+
+---
+
 # Быстрый путь к основным результатам
 
 Валидированные reference-результаты уже сохранены в `results/reference/`.
