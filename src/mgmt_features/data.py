@@ -92,3 +92,28 @@ def load_upenn_clean(path: str | Path):
         raise ValueError("Processed UPenn dataset still contains NaN values.")
 
     return df, X, y
+
+
+def load_upenn_raw(path: str | Path):
+    """Load the merged UPenn cohort before feature cleaning for nested CV."""
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(
+            f"UPenn uncleaned dataset not found: {path}. "
+            "Run: python scripts/build_upenn.py"
+        )
+
+    df = pd.read_csv(path)
+    missing = set(UPENN_METADATA_COLUMNS) - set(df.columns)
+    if missing:
+        raise ValueError(f"Missing UPenn metadata columns: {sorted(missing)}")
+    if df["SubjectID"].isna().any() or df["SubjectID"].duplicated().any():
+        raise ValueError("SubjectID must be present and unique for each patient.")
+    expected = df["MGMT"].map({"Methylated": 1, "Unmethylated": 0})
+    if expected.isna().any() or not expected.equals(df["target"]):
+        raise ValueError("MGMT and target must contain consistent binary labels.")
+
+    X = df.drop(columns=UPENN_METADATA_COLUMNS)
+    if X.shape[1] == 0:
+        raise ValueError("UPenn table contains no radiomics features.")
+    return df, X, df["target"].astype(int)

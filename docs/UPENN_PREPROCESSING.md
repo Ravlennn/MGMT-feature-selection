@@ -7,6 +7,23 @@ scripts/build_upenn.py
 src/mgmt_features/preprocessing.py
 ```
 
+## Два выхода для разных целей
+
+`scripts/build_upenn.py` сохраняет одну и ту же когорту после объединения
+12 блоков в два локальных файла (оба игнорируются Git):
+
+- `data/processed/upenn/upenn_structural_raw.csv` — 256 пациентов,
+  1728 признаков **до** удаления констант, дубликатов и заполнения пропусков;
+  вход для fold-safe оценки.
+- `data/processed/upenn/upenn_clean.csv` — прежняя матрица 256 × 1480;
+  используется для воспроизведения уже выполненного exploratory-сравнения.
+
+В `scripts/run_upenn_nested_cv.py` cleaner находится внутри `Pipeline`:
+на каждом внешнем и внутреннем обучающем фолде он определяет константы,
+точные дубликаты и train-медианы. На соответствующей validation-части
+применяются только зафиксированные правила. Существующие `run_upenn.py`
+и `evaluate_upenn_selected.py` сохраняют прежний exploratory-протокол.
+
 ---
 
 # 1. Исходная clinical table

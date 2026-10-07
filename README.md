@@ -44,18 +44,22 @@ MGMT-feature-selection/
 │   ├── analysis.py
 │   ├── config.py
 │   ├── data.py
+│   ├── nested_cv.py
+│   ├── nested_statistics.py
 │   ├── pipelines.py
 │   ├── preprocessing.py
 │   └── selectors/
 │       ├── fscore.py
 │       ├── xgb_importance.py
 │       ├── genetic_rf.py
-│       └── mi_rf_rfe.py
+│       ├── mi_rf_rfe.py
+│       └── cv_adapters.py
 ├── scripts/
 │   ├── build_upenn.py
 │   ├── run_reference.py
 │   ├── run_upenn.py
 │   ├── evaluate_upenn_selected.py
+│   ├── run_upenn_nested_cv.py
 │   ├── build_report.py
 │   └── run_all.py
 ├── results/
@@ -122,7 +126,7 @@ data/raw/do_2022/Training dataset.csv
 Подробный preprocessing вынесен в отдельный файл:
 
 ```text
-README_UPENN_PREPROCESSING.md
+docs/UPENN_PREPROCESSING.md
 ```
 
 Кратко итоговая последовательность выглядит так:
@@ -208,6 +212,7 @@ python scripts/build_upenn.py
 Создаются:
 
 ```text
+data/processed/upenn/upenn_structural_raw.csv
 data/processed/upenn/upenn_clean.csv
 data/processed/upenn/summary.json
 ```
@@ -611,6 +616,134 @@ outer validation
 
 ---
 
+## Fold-safe оценка трёх методов и бейзлайнов
+
+Отдельный эксперимент сравнивает Le/F-score, Do/XGBoost→GA-RF и
+Calabrese-inspired MI→RF-RFE. Бейзлайны: `all_features` с L2 Logistic
+Regression без отбора, `random_9`, `random_32` и `random_do_k`. Последний
+получает фактическое K признаков, выбранных Do на том же внешнем обучающем
+фолде. Для каждого random-бейзлайна по умолчанию выполняется 50 повторов;
+`random_do_k` по очереди сопоставляется с пятью GA seeds.
+
+Все ветки используют одинаковые внешние 5 фолдов. В каждом outer train
+внутренний 5-fold `GridSearchCV` выбирает `C` из
+`[0.001, 0.01, 0.1, 1, 10, 100]` по AUROC; GA запускается с пятью заранее
+фиксированными seeds `11, 22, 33, 44, 55`. Выбор лучшего GA seed по внешнему
+AUROC не выполняется.
+
+`FoldSafeRadiomicsCleaner`, отбор признаков и `StandardScaler` входят в
+`Pipeline`: они обучаются на train-части каждого внутреннего фолда, затем
+заново на полном outer train. Оставшийся outer validation используется только
+для прогноза. Для всех признаков применяется тот же L2-классификатор и та же
+сетка `C`. Кэш Pipeline не пересчитывает дорогой selector для каждого нового
+значения `C` на одном и том же обучающем фолде.
+
+Для nested CV предусмотрены два заранее фиксированных профиля селекторов:
+
+| Профиль | Do GA-RF | Calabrese-inspired RF-RFE |
+|---|---|---|
+| `practical` (по умолчанию) | population 12, generations 5, RF 50, internal CV 3 | MI 1024, top-32, RF 100, step 64, internal CV 3 |
+| `legacy` | UPenn GA population 50, generations 20, RF 100, internal CV 5 | MI 1024, top-32, RF 1000, step 16, internal CV 5 |
+
+`practical` сохраняет этапы алгоритмов, но уменьшает вычислительные параметры;
+его результаты нельзя выдавать за запуск прежних настроек. `legacy` берёт
+настройки из текущего UPenn-кода проекта, а не гарантирует точного
+воспроизведения гиперпараметров статей; он может работать очень долго даже
+с кэшем. `--quick` дополнительно уменьшает все
+тяжёлые параметры и предназначен только для проверки кода.
+
+```powershell
+python scripts/build_upenn.py
+python scripts/run_upenn_nested_cv.py --quick
+python scripts/run_upenn_nested_cv.py
+```
+
+Можно запускать методы отдельно, а затем повторить команду без `--methods`,
+чтобы использовать готовые checkpoints и собрать общую таблицу:
+
+```powershell
+python scripts/run_upenn_nested_cv.py --methods le_fscore all_features random_9 random_32
+python scripts/run_upenn_nested_cv.py --methods calabrese_mi_rfe
+python scripts/run_upenn_nested_cv.py --methods do_xgb_ga random_do_k
+python scripts/run_upenn_nested_cv.py
+```
+
+Если GA пропускается из-за вычислительной стоимости, можно получить
+**отдельный сокращённый отчёт** по Le и Calabrese без повторного расчёта уже
+сохранённых фолдов:
+
+```powershell
+python scripts/run_upenn_nested_cv.py --methods random_9 random_32
+python scripts/run_upenn_nested_cv.py --skip-ga
+```
+
+По умолчанию выполняется 50 повторов каждого случайного бейзлайна. Это
+выбранная настройка эксперимента, а не требование руководителя. Если расчёт
+уже начат и достаточно 20 повторов, остановите его после завершённого фолда
+и подготовьте отдельный каталог с готовыми checkpoints:
+
+```powershell
+python scripts/prepare_upenn_nested_cv_repeats.py --random-repeats 20
+python scripts/run_upenn_nested_cv.py --skip-ga --random-repeats 20 --output results/upenn/nested_cv/repeats_20
+```
+
+Первая команда копирует только завершённые фолды Le, Calabrese,
+`all_features`, `random_9` и `random_32`, для каждого случайного метода —
+только повторы 0–19. Выходной каталог должен быть новым. Вторая команда
+досчитывает недостающие фолды и создаёт итоговые CSV. Старый каталог
+`full/` не меняется; повторный запуск второй команды использует checkpoints.
+
+`--skip-ga` использует те же `results/upenn/nested_cv/full/` и checkpoints;
+при `--output` можно выбрать отдельный каталог. Команда без `--skip-ga`
+по-прежнему потребует выполнить Do. Сокращённый
+отчёт содержит пять методов и пять парных сравнений. GA и соответствующий
+`random_do_k` в этом протоколе **не оценены**; требование исходного TODO о
+пяти запусках GA остаётся невыполненным. Результаты `--quick` не являются
+основанием считать полный GA неэффективным.
+
+Команды итогового сбора не пересчитывают завершённые фолды. Они
+сохраняют `summary.csv`, `fold_metrics.csv`, `oof_predictions.csv`,
+`selected_features_by_fold.csv`, `method_inference.csv` и
+`paired_comparisons.csv` в `results/upenn/nested_cv/full/`. После
+прерывания завершённые фолды читаются из `checkpoints/`; при изменении
+исходного CSV, кода отбора или настроек требуется другая выходная папка.
+
+Профиль `legacy` запускается в отдельную папку, например через
+`--selector-profile legacy --output results/upenn/nested_cv/legacy`.
+Можно увеличить число bootstrap-повторов статистического отчёта через
+`--bootstrap-samples 5000`, не меняя эксперимент с моделями.
+
+`summary.csv` содержит AUROC каждого повтора: среднее ± SD по пяти внешним
+фолдам и AUROC объединённых OOF-предсказаний. В `method_inference.csv`
+основная оценка для каждого метода заранее зафиксирована на `repeat=0`:
+AUROC и 95% percentile CI по 2000 стратифицированным bootstrap-выборкам
+пациентов. Там же показаны среднее, SD, минимум и максимум AUROC **между
+повторами**: пять запусков GA и 50 случайных наборов признаков не считаются
+дополнительными пациентами. Для методов без повторов SD оставляется пустым.
+
+`paired_comparisons.csv` в полном протоколе содержит девять сравнений: каждый
+селектор против случайного K и `all_features`, затем три попарных сравнения
+селекторов. `delta_auc_a_minus_b > 0` означает преимущество `method_a`;
+95% CI разницы получен из **тех же** bootstrap-выборок пациентов.
+`delong_p_two_sided` — парный тест DeLong для AUROC по OOF-прогнозам;
+`delong_p_holm` корректирует p-values методом Holm по числу сравнений,
+указанному в `n_holm_comparisons` (девять или пять при `--skip-ga`).
+В сравнениях используются одинаковые пациенты/внешние фолды и только
+заранее выбранный `repeat=0` (для GA — seed 11, для `random_do_k` —
+соответствующий GA seed). Случайные повторы не усредняются в ансамбль.
+
+Интервалы описывают разброс при переотборе **этих пациентов с уже
+полученными OOF-прогнозами**, а не повторном обучении всей схемы на новой
+когорте. DeLong на OOF-прогнозах разных обученных моделей трактуется как
+приближённый, исследовательский тест; основной акцент — AUROC, парная
+разница и её пациентский bootstrap CI. Никакого внешнего независимого
+тестового набора в этом эксперименте нет. `--quick` создаёт только
+проверочный отчёт без научной интерпретации. Прежние AUROC
+0.606/0.597/0.583 из exploratory-сравнения не заменяются и не должны
+сопоставляться с этой новой оценкой как результаты одного протокола.
+
+---
+
 # Быстрый путь к основным результатам
 
 Валидированные reference-результаты уже сохранены в `results/reference/`.
@@ -779,4 +912,3 @@ python scripts/evaluate_upenn_selected.py
 | MI + RF-RFE | 32 | 0.5835 | 0.5639 | 0.5898 |
 
 Важно: feature selection выполнялся до этой downstream CV на полном UPenn dataset, поэтому ROC-AUC используется как **внутренняя сравнительная метрика выбранных feature subsets**, а не как независимая внешняя оценка generalization.
-

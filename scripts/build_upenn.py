@@ -10,6 +10,7 @@ CLINICAL_PATH = ROOT / "data/raw/upenn/clinical/UPENN-GBM_clinical_info_v2.1.csv
 RADIOMICS_DIR = ROOT / "data/raw/upenn/radiomics"
 OUTPUT_DIR = ROOT / "data/processed/upenn"
 OUTPUT_PATH = OUTPUT_DIR / "upenn_clean.csv"
+RAW_OUTPUT_PATH = OUTPUT_DIR / "upenn_structural_raw.csv"
 
 VALID_MGMT = {"Methylated": 1, "Unmethylated": 0}
 STRUCTURAL_BLOCKS = [
@@ -60,6 +61,10 @@ def main():
 
     metadata = ["SubjectID", "MGMT", "target"]
     raw_feature_columns = [c for c in merged.columns if c not in metadata]
+    # Keep the fixed 256-patient cohort before any feature cleaning. Nested CV
+    # will fit its own cleaner inside each outer training fold using this file.
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    merged.to_csv(RAW_OUTPUT_PATH, index=False)
     cleaned = clean_upenn_feature_matrix(merged[raw_feature_columns])
 
     final_df = pd.concat(
@@ -87,6 +92,7 @@ def main():
     for key, value in summary.items():
         print(f"{key}: {value}")
     print(f"\nSaved: {OUTPUT_PATH}")
+    print(f"Uncleaned cohort for fold-safe CV: {RAW_OUTPUT_PATH}")
 
 
 if __name__ == "__main__":
