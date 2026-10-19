@@ -1,15 +1,14 @@
-# Core sources
+# Источники методов и данных
 
-- **Le et al. (F-score radiomics / MGMT)**  
-  https://pmc.ncbi.nlm.nih.gov/articles/PMC7563334/
+| Статья / источник | Найденная реализация и данные | Лицензия | Что переиспользовано в проекте |
+|---|---|---|---|
+| [Le et al. — F-score для MGMT](https://pmc.ncbi.nlm.nih.gov/articles/PMC7563334/) | Подтверждённая авторская реализация отбора не найдена. Доступная reference-таблица взята из репозитория Do ниже. | Лицензия авторского кода не установлена; код не копировался. | Самостоятельная реализация F-score и выбора top-9; на reference сверено совпадение опубликованных top-9. |
+| [Do et al. — XGBoost → GA-RF](https://pmc.ncbi.nlm.nih.gov/articles/PMC9352871/) | Авторский [GA-ML](https://github.com/thiduyendo/GA-ML): `script.py`, `Training dataset.csv`, `test dataset.csv`. | В корне GA-ML нет файла `LICENSE`, GitHub не указывает лицензию репозитория. Условия переиспользования кода и таблиц не установлены. | Локально использована training-таблица как reference; схема XGBoost gain → GA с RF реализована самостоятельно, для UPenn применён сокращённый профиль `practical`. Таблицы не включены в Git. |
+| [Calabrese et al. — radiomics + CNN](https://academic.oup.com/noa/article/4/1/vdac060/6572390) | Авторский [gliomarad](https://github.com/ecalabr/gliomarad) указан в статье как код **CNN-части**; готовой реализации радиомического отбора MI → RF-RFE и полной матрицы когорты из 400 пациентов там нет. | В корне gliomarad нет файла `LICENSE`, GitHub не указывает лицензию репозитория. | По описанию в статье самостоятельно адаптирована цепочка MI top-1024 → RF-RFE top-32; CNN-код не использовался. Оригинальную UCSF-когорту не воспроизводили. |
+| [UPENN-GBM, TCIA](https://www.cancerimagingarchive.net/collection/upenn-gbm/) ([DOI](https://doi.org/10.7937/TCIA.709X-DN49)) | Публичные клинические таблицы, радиомические признаки CaPTk и параметры извлечения. | На странице TCIA для материалов коллекции указана CC BY 4.0. | Локально сформирована когорта 256 пациентов с 12 блоками структурной MRI-радиомики; исходные данные не включены в Git. |
 
-- **Do et al. (XGBoost + GA-RF)**  
-  Article: https://pmc.ncbi.nlm.nih.gov/articles/PMC9352871/  
-  Author GitHub: https://github.com/thiduyendo/GA-ML
-
-- **Calabrese et al. (MI + RF-RFE-inspired approach)**  
-  https://academic.oup.com/noa/article/4/1/vdac060/6572390
-
-- **UPENN-GBM official collection (TCIA)**  
-  https://www.cancerimagingarchive.net/collection/upenn-gbm/  
-  DOI: https://doi.org/10.7937/TCIA.709X-DN49
+Совпадение названий метрик между reference и UPenn не подтверждает равенство
+формул, квантования и областей сегментации. Словарь сравнения в
+`scripts/compare_reference_upenn_features.py` даёт кандидатов по именам,
+включая отдельный условный сценарий NET ↔ NC, а не проверенное соответствие
+физических признаков.
